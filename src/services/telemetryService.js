@@ -1,46 +1,66 @@
 import {
   collection,
-  collectionGroup,
   deleteDoc,
   doc,
   getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
+  startAfter,
   where,
   writeBatch,
 } from 'firebase/firestore'
 import { db } from '../firebase/firebase'
 
-const normalizeTelemetry = (recordId, data = {}) => {
-  const timestamp = data.timestamp?.toDate ? data.timestamp.toDate() : data.timestamp || new Date()
-  const location = data.location || {}
+export const TELEMETRY_PAGE_SIZE = 25
+
+const normalizeTelemetry = (recordId, data = {}, device = {}) => {
+  // Firestore timestamps are converted to Date objects for chart and table consumers.
+  const timestamp = data.timestamp?.toDate ? data.timestamp.toDate() : data.timestamp || null
+  const location = data.location || null
+  const locationNumber = (value) => {
+    if (value == null || value === '') return null
+    const number = Number(value)
+    return Number.isFinite(number) ? number : null
+  }
+  const sensorNumber = (value) => {
+    if (value == null || value === '') return null
+    const number = Number(value)
+    return Number.isFinite(number) ? number : null
+  }
 
   return {
     id: recordId,
-    userId: data.userId || '',
-    deviceId: data.deviceId || '',
-    deviceName: data.deviceName || 'Unknown Device',
+    userId: data.userId || device.userId || '',
+    deviceId: data.deviceId || device.id || '',
+    deviceName: data.deviceName || device.deviceName || 'Unknown Device',
     timestamp,
-    location: {
-      latitude: Number(location.latitude ?? 0),
-      longitude: Number(location.longitude ?? 0),
-      accuracy: Number(location.accuracy ?? 0),
-      altitude: Number(location.altitude ?? 0),
-      speed: Number(location.speed ?? 0),
-    },
-    gyroscope: {
-      x: Number(data.gyroscope?.x ?? 0),
-      y: Number(data.gyroscope?.y ?? 0),
-      z: Number(data.gyroscope?.z ?? 0),
-    },
-    accelerometer: {
-      x: Number(data.accelerometer?.x ?? 0),
-      y: Number(data.accelerometer?.y ?? 0),
-      z: Number(data.accelerometer?.z ?? 0),
-    },
-    batteryLevel: Number(data.batteryLevel ?? 0),
-    isCharging: Boolean(data.isCharging),
+    location: location
+      ? {
+          latitude: locationNumber(location.latitude),
+          longitude: locationNumber(location.longitude),
+          accuracy: locationNumber(location.accuracy),
+          altitude: locationNumber(location.altitude),
+          speed: locationNumber(location.speed),
+        }
+      : null,
+    gyroscope: data.gyroscope
+      ? {
+          x: sensorNumber(data.gyroscope.x),
+          y: sensorNumber(data.gyroscope.y),
+          z: sensorNumber(data.gyroscope.z),
+        }
+      : null,
+    accelerometer: data.accelerometer
+      ? {
+          x: sensorNumber(data.accelerometer.x),
+          y: sensorNumber(data.accelerometer.y),
+          z: sensorNumber(data.accelerometer.z),
+        }
+      : null,
+    batteryLevel: sensorNumber(data.batteryLevel),
+    isCharging: typeof data.isCharging === 'boolean' ? data.isCharging : null,
     networkType: data.networkType || 'Unknown',
     androidVersion: data.androidVersion || 'Unknown',
     deviceModel: data.deviceModel || 'Unknown model',
@@ -48,57 +68,85 @@ const normalizeTelemetry = (recordId, data = {}) => {
   }
 }
 
-export function subscribeToUserTelemetry(userId, callback) {
+export function subscribeToUserTelemetry(userId, callback, onError, pageSize) {
   if (!db || !userId) {
-    callback([])
+    callback([], { lastDocument: null, hasMore: false })
     return () => {}
   }
 
-  const q = query(
-    collectionGroup(db, 'telemetry'),
+  const constraints = [
     where('userId', '==', userId),
     orderBy('timestamp', 'desc'),
-  )
+  ]
+  if (Number.isInteger(pageSize) && pageSize > 0) constraints.push(limit(pageSize))
+  const telemetryQuery = query(collection(db, 'telemetry'), ...constraints)
 
-  return onSnapshot(q, (snapshot) => {
-    const telemetry = snapshot.docs.map((docSnap) => normalizeTelemetry(docSnap.id, docSnap.data()))
-    callback(telemetry)
-  })
+  return onSnapshot(
+    telemetryQuery,
+    (snapshot) => {
+      callback(
+        snapshot.docs.map((record) =>
+          normalizeTelemetry(record.id, record.data()),
+        ),
+        {
+          lastDocument: snapshot.docs[snapshot.docs.length - 1] || null,
+          hasMore: Number.isInteger(pageSize) && snapshot.docs.length === pageSize,
+        },
+      )
+    },
+    (error) => onError?.(error),
+  )
+}
+
+export async function getNextTelemetryPage(userId, lastDocument, pageSize = TELEMETRY_PAGE_SIZE) {
+  if (!db || !userId || !lastDocument) {
+    return { records: [], lastDocument: null, hasMore: false }
+  }
+
+  const telemetryQuery = query(
+    collection(db, 'telemetry'),
+    where('userId', '==', userId),
+    orderBy('timestamp', 'desc'),
+    startAfter(lastDocument),
+    limit(pageSize),
+  )
+  const snapshot = await getDocs(telemetryQuery)
+  const docs = snapshot.docs
+  return {
+    records: docs.map((record) => normalizeTelemetry(record.id, record.data())),
+    lastDocument: docs[docs.length - 1] || null,
+    hasMore: docs.length === pageSize,
+  }
 }
 
 export async function getTelemetryForUser(userId) {
   if (!db || !userId) return []
 
-  const q = query(
-    collectionGroup(db, 'telemetry'),
+  const telemetryQuery = query(
+    collection(db, 'telemetry'),
     where('userId', '==', userId),
     orderBy('timestamp', 'desc'),
   )
-
-  const snapshot = await getDocs(q)
-  return snapshot.docs.map((docSnap) => normalizeTelemetry(docSnap.id, docSnap.data()))
+  const snapshot = await getDocs(telemetryQuery)
+  return snapshot.docs.map((record) => normalizeTelemetry(record.id, record.data()))
 }
 
 export async function deleteTelemetryForUser(userId) {
   if (!db || !userId) return
 
-  const q = query(
-    collectionGroup(db, 'telemetry'),
+  const telemetryQuery = query(
+    collection(db, 'telemetry'),
     where('userId', '==', userId),
   )
-
-  const snapshot = await getDocs(q)
-  const batch = writeBatch(db)
-  snapshot.docs.forEach((docSnap) => {
-    batch.delete(docSnap.ref)
-  })
-
-  if (snapshot.docs.length) {
+  const snapshot = await getDocs(telemetryQuery)
+  for (let offset = 0; offset < snapshot.docs.length; offset += 450) {
+    const batch = writeBatch(db)
+    snapshot.docs.slice(offset, offset + 450).forEach((record) => batch.delete(record.ref))
     await batch.commit()
   }
 }
 
 export async function deleteTelemetryRecord(userId, recordId) {
   if (!db || !userId || !recordId) return
-  await deleteDoc(doc(db, 'users', userId, 'devices', 'placeholder', 'telemetry', recordId))
+  await deleteDoc(doc(db, 'telemetry', recordId))
 }

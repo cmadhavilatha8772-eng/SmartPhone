@@ -1,8 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Download, Filter, Search } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Filter, Search } from 'lucide-react'
 import Loading from '../components/Loading'
 import TelemetryTable from '../components/TelemetryTable'
-import { subscribeToUserTelemetry } from '../services/telemetryService'
+import {
+  getNextTelemetryPage,
+  subscribeToUserTelemetry,
+  TELEMETRY_PAGE_SIZE,
+} from '../services/telemetryService'
 
 const formatDateInput = (value) => {
   if (!value) return ''
@@ -19,24 +23,71 @@ const formatDateLabel = (value) => {
 
 export default function TelemetryPage({ user }) {
   const [telemetry, setTelemetry] = useState([])
+  const [pages, setPages] = useState([])
   const [loading, setLoading] = useState(true)
+  const [pageLoading, setPageLoading] = useState(false)
+  const [telemetryError, setTelemetryError] = useState('')
   const [selectedRecord, setSelectedRecord] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [deviceFilter, setDeviceFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+  const currentPageRef = useRef(1)
 
   useEffect(() => {
     if (!user) return undefined
 
-    const unsubscribe = subscribeToUserTelemetry(user.uid, (nextTelemetry) => {
+    const unsubscribe = subscribeToUserTelemetry(user.uid, (nextTelemetry, pageInfo) => {
       setTelemetry(nextTelemetry)
+      setPages([{ records: nextTelemetry, ...pageInfo }])
+      currentPageRef.current = 1
+      setCurrentPage(1)
       setLoading(false)
-    })
+      setTelemetryError('')
+    }, (error) => {
+      setTelemetryError(error.message || 'Unable to load telemetry records.')
+      setLoading(false)
+    }, TELEMETRY_PAGE_SIZE)
 
     return () => unsubscribe()
   }, [user])
+
+  const goToNextPage = async () => {
+    const currentPageData = pages[currentPage - 1]
+    if (!currentPageData?.hasMore || pageLoading) return
+
+    const nextPageNumber = currentPage + 1
+    const cachedPage = pages[nextPageNumber - 1]
+    if (cachedPage) {
+      currentPageRef.current = nextPageNumber
+      setCurrentPage(nextPageNumber)
+      setTelemetry(cachedPage.records)
+      return
+    }
+
+    setPageLoading(true)
+    setTelemetryError('')
+    try {
+      const nextPage = await getNextTelemetryPage(user.uid, currentPageData.lastDocument)
+      setPages((previousPages) => [...previousPages, nextPage])
+      currentPageRef.current = nextPageNumber
+      setCurrentPage(nextPageNumber)
+      setTelemetry(nextPage.records)
+    } catch (error) {
+      setTelemetryError(error.message || 'Unable to load the next telemetry page.')
+    } finally {
+      setPageLoading(false)
+    }
+  }
+
+  const goToPreviousPage = () => {
+    if (currentPage <= 1) return
+    const previousPage = currentPage - 1
+    currentPageRef.current = previousPage
+    setCurrentPage(previousPage)
+    setTelemetry(pages[previousPage - 1]?.records || [])
+  }
 
   const uniqueDevices = useMemo(
     () => Array.from(new Set(telemetry.map((record) => record.deviceName || record.deviceModel || 'Unknown device'))),
@@ -63,6 +114,7 @@ export default function TelemetryPage({ user }) {
         const to = dateTo ? new Date(dateTo) : null
 
         const matchesFrom = !from || recordDate >= from
+        // Include the full selected end date rather than stopping at midnight.
         const matchesTo = !to || recordDate <= new Date(new Date(to).setHours(23, 59, 59, 999))
 
         return matchesSearch && matchesDevice && matchesFrom && matchesTo
@@ -70,29 +122,22 @@ export default function TelemetryPage({ user }) {
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
   }, [telemetry, searchTerm, deviceFilter, dateFrom, dateTo])
 
-  const pageSize = 10
-  const totalPages = Math.max(1, Math.ceil(filteredTelemetry.length / pageSize))
-  const currentRecords = filteredTelemetry.slice((currentPage - 1) * pageSize, currentPage * pageSize)
-
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [searchTerm, deviceFilter, dateFrom, dateTo])
+  const currentPageData = pages[currentPage - 1]
 
   return (
     <div className="page-stack">
+      {telemetryError ? <div className="error-box" role="alert">{telemetryError}</div> : null}
+
       <div className="panel-card">
         <div className="panel-header">
           <h3>Telemetry records</h3>
-          <button type="button" className="secondary-button small">
-            <Download size={14} />
-            Refresh
-          </button>
+          <span className="muted">Live updates · {telemetry.length} records loaded on this page</span>
         </div>
 
         <div className="filter-toolbar">
           <label className="search-box">
             <Search size={15} />
-            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search telemetry" />
+            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search this page" />
           </label>
 
           <label className="field-box">
@@ -132,19 +177,19 @@ export default function TelemetryPage({ user }) {
           <Loading message="Loading telemetry records..." />
         ) : (
           <>
-            <TelemetryTable records={currentRecords} onRowClick={setSelectedRecord} emptyMessage="No telemetry data available yet." />
+            <TelemetryTable records={filteredTelemetry} onRowClick={setSelectedRecord} limit={null} emptyMessage="No records match the selected filters." />
 
-            {filteredTelemetry.length > 0 ? (
+            {telemetry.length > 0 || currentPage > 1 ? (
               <div className="pagination-row">
                 <span>
-                  Showing {Math.min((currentPage - 1) * pageSize + 1, filteredTelemetry.length)} - {Math.min(currentPage * pageSize, filteredTelemetry.length)} of {filteredTelemetry.length}
+                  Page {currentPage} · {filteredTelemetry.length} matching of {telemetry.length} loaded
                 </span>
                 <div className="pagination-buttons">
-                  <button type="button" disabled={currentPage === 1} onClick={() => setCurrentPage((page) => Math.max(page - 1, 1))}>
+                  <button type="button" disabled={currentPage === 1 || pageLoading} onClick={goToPreviousPage}>
                     Previous
                   </button>
-                  <button type="button" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((page) => Math.min(page + 1, totalPages))}>
-                    Next
+                  <button type="button" disabled={!currentPageData?.hasMore || pageLoading} onClick={goToNextPage}>
+                    {pageLoading ? 'Loading…' : 'Next'}
                   </button>
                 </div>
               </div>
@@ -182,15 +227,15 @@ export default function TelemetryPage({ user }) {
               </div>
               <div>
                 <span>Accuracy</span>
-                <strong>{selectedRecord.location?.accuracy ? `${selectedRecord.location.accuracy.toFixed(1)} m` : '—'}</strong>
+                <strong>{Number.isFinite(selectedRecord.location?.accuracy) ? `${selectedRecord.location.accuracy.toFixed(1)} m` : '—'}</strong>
               </div>
               <div>
                 <span>Altitude</span>
-                <strong>{selectedRecord.location?.altitude ? `${selectedRecord.location.altitude.toFixed(1)} m` : '—'}</strong>
+                <strong>{Number.isFinite(selectedRecord.location?.altitude) ? `${selectedRecord.location.altitude.toFixed(1)} m` : '—'}</strong>
               </div>
               <div>
                 <span>Speed</span>
-                <strong>{selectedRecord.location?.speed ? `${selectedRecord.location.speed.toFixed(1)} m/s` : '—'}</strong>
+                <strong>{Number.isFinite(selectedRecord.location?.speed) ? `${selectedRecord.location.speed.toFixed(1)} m/s` : '—'}</strong>
               </div>
               <div>
                 <span>Battery</span>

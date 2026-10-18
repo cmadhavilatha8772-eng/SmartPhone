@@ -16,18 +16,92 @@ service cloud.firestore {
       match /devices/{deviceId} {
         allow read, update, delete: if isOwner(userId);
         allow create: if isSignedIn() && request.auth.uid == userId;
+
+        match /sensorRecords/{recordId} {
+          allow read, update, delete: if isOwner(userId);
+          allow create: if isOwner(userId);
+        }
       }
 
       match /devices/{deviceId}/telemetry/{telemetryId} {
         allow read, update, delete: if isOwner(userId);
-        allow create: if isSignedIn() && request.auth.uid == userId;
+        allow create: if isOwner(userId);
       }
     }
 
-    match /{path=**}/telemetry/{telemetryId} {
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    match /userActivity/{userId} {
+      allow get: if isOwner(userId) || request.auth.token.admin == true;
+      allow list: if isSignedIn() && request.auth.token.admin == true;
+      allow create: if isOwner(userId)
+        && request.resource.data.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'lastLoginAt',
+          'lastActiveAt',
+          'lastLogoutAt',
+          'appVersion',
+          'foregroundAt',
+          'isForeground'
+        ])
+        && request.resource.data.keys().hasAll([
+          'uid',
+          'lastLoginAt',
+          'lastActiveAt',
+          'lastLogoutAt',
+          'appVersion',
+          'foregroundAt',
+          'isForeground'
+        ])
+        && (request.resource.data.lastLoginAt == null || request.resource.data.lastLoginAt == request.time)
+        && (request.resource.data.lastActiveAt == null || request.resource.data.lastActiveAt == request.time)
+        && (request.resource.data.lastLogoutAt == null || request.resource.data.lastLogoutAt == request.time)
+        && (request.resource.data.foregroundAt == null || request.resource.data.foregroundAt == request.time)
+        && request.resource.data.appVersion is string
+        && request.resource.data.isForeground is bool;
+      allow update: if isOwner(userId)
+        && request.resource.data.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastLoginAt',
+          'lastActiveAt',
+          'lastLogoutAt',
+          'appVersion',
+          'foregroundAt',
+          'isForeground'
+        ])
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastLoginAt'])
+          || request.resource.data.lastLoginAt == request.time
+        )
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastActiveAt'])
+          || request.resource.data.lastActiveAt == request.time
+        )
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastLogoutAt'])
+          || request.resource.data.lastLogoutAt == request.time
+        )
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['foregroundAt'])
+          || request.resource.data.foregroundAt == null
+          || request.resource.data.foregroundAt == request.time
+        )
+        && request.resource.data.appVersion is string
+        && request.resource.data.isForeground is bool;
+      allow delete: if false;
+    }
+
+    match /telemetry/{telemetryId} {
+      allow read, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.recordId is string
+        && request.resource.data.deviceId is string
+        && request.resource.data.timestamp is timestamp;
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.deviceId is string
+        && request.resource.data.timestamp is timestamp;
     }
   }
 }

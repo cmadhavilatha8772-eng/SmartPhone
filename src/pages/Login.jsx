@@ -18,6 +18,7 @@ export default function Login() {
   const handleSubmit = async (event) => {
     event.preventDefault()
     setError('')
+    // Prevent duplicate auth requests while Firebase is processing the sign-in.
     setLoading(true)
 
     try {

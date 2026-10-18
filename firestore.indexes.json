@@ -9,10 +9,19 @@
       ]
     },
     {
-      "collectionGroup": "devices",
+      "collectionGroup": "userActivity",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "lastSeen", "order": "DESCENDING" }
+        { "fieldPath": "lastActiveAt", "order": "DESCENDING" },
+        { "fieldPath": "lastLoginAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "telemetry",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
       ]
     }
   ],

@@ -9,6 +9,7 @@ export default function Navbar({ user, onLogout, onToggleTheme, theme }) {
       </div>
 
       <div className="topbar-actions">
+        {/* Show the action that switches to the other theme. */}
         <button type="button" className="icon-button" onClick={onToggleTheme} aria-label="Toggle theme">
           {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
         </button>

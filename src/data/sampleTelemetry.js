@@ -1,3 +1,4 @@
+// Example Firestore-shaped record for developing and checking telemetry UI.
 export const sampleTelemetry = [
   {
     id: 'sample-telemetry-1',

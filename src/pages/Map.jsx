@@ -11,6 +11,7 @@ const filterByWindow = (records, period) => {
     '24h': 24 * 60 * 60 * 1000,
     '7d': 7 * 24 * 60 * 60 * 1000,
     '30d': 30 * 24 * 60 * 60 * 1000,
+    // Keep an explicit no-cutoff option for callers that request all available history.
     all: Number.MAX_SAFE_INTEGER,
   }
 
@@ -21,6 +22,7 @@ const filterByWindow = (records, period) => {
 export default function MapPage({ user }) {
   const [telemetry, setTelemetry] = useState([])
   const [loading, setLoading] = useState(true)
+  const [telemetryError, setTelemetryError] = useState('')
   const [period, setPeriod] = useState('7d')
 
   useEffect(() => {
@@ -28,6 +30,10 @@ export default function MapPage({ user }) {
 
     const unsubscribe = subscribeToUserTelemetry(user.uid, (nextTelemetry) => {
       setTelemetry(nextTelemetry)
+      setLoading(false)
+      setTelemetryError('')
+    }, (error) => {
+      setTelemetryError(error.message || 'Unable to load telemetry records.')
       setLoading(false)
     })
 
@@ -42,6 +48,8 @@ export default function MapPage({ user }) {
 
   return (
     <div className="page-stack">
+      {telemetryError ? <div className="error-box" role="alert">{telemetryError}</div> : null}
+
       <div className="panel-card">
         <div className="panel-header">
           <h3>Location history</h3>

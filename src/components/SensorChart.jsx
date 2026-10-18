@@ -23,6 +23,7 @@ export default function SensorChart({ data = [] }) {
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip />
             <Legend />
+            {/* Plot the three gyroscope axes against the same telemetry time labels. */}
             <Line type="monotone" dataKey="gx" stroke="#38bdf8" name="Gyro X" strokeWidth={2} />
             <Line type="monotone" dataKey="gy" stroke="#8b5cf6" name="Gyro Y" strokeWidth={2} />
             <Line type="monotone" dataKey="gz" stroke="#10b981" name="Gyro Z" strokeWidth={2} />

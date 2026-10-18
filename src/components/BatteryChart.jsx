@@ -25,6 +25,7 @@ export default function BatteryChart({ data = [] }) {
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+            {/* Battery is a percentage, so keep the scale comparable across time ranges. */}
             <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
             <Tooltip formatter={(value) => [`${value}%`, 'Battery']} />
             <Area type="monotone" dataKey="battery" stroke="#4f9cff" fill="url(#batteryGradient)" strokeWidth={2} />

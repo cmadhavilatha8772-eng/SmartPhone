@@ -17,7 +17,8 @@ const normalizeDevice = (deviceId, data = {}) => ({
   model: data.model || 'Unknown model',
   androidVersion: data.androidVersion || 'Unknown',
   appVersion: data.appVersion || 'Unknown',
-  lastSeen: data.lastSeen?.toDate ? data.lastSeen.toDate() : data.lastSeen || new Date(),
+  // Convert Firestore Timestamp values so the UI can format dates consistently.
+  lastSeen: data.lastSeen?.toDate ? data.lastSeen.toDate() : data.lastSeen || null,
   collectionEnabled: data.collectionEnabled ?? true,
   batteryLevel: data.batteryLevel ?? 0,
   networkType: data.networkType || 'Unknown',
@@ -30,6 +31,7 @@ export function subscribeToUserDevices(userId, callback) {
     return () => {}
   }
 
+  // Read only this user's device subcollection and show the most recently seen first.
   const q = query(collection(db, 'users', userId, 'devices'), orderBy('lastSeen', 'desc'))
   return onSnapshot(q, (snapshot) => {
     const devices = snapshot.docs.map((docSnap) => normalizeDevice(docSnap.id, docSnap.data()))

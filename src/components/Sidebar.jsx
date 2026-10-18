@@ -1,6 +1,7 @@
-import { BarChart3, Database, Gauge, LogOut, MapPinned, Settings, Smartphone } from 'lucide-react'
+import { BarChart3, Database, Gauge, LogOut, MapPinned, Settings, Shield, Smartphone } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
+// Keep route destinations and their navigation labels/icons in one list.
 const navItems = [
   { label: 'Dashboard', path: '/dashboard', icon: BarChart3 },
   { label: 'Devices', path: '/devices', icon: Smartphone },
@@ -9,7 +10,11 @@ const navItems = [
   { label: 'Settings', path: '/settings', icon: Settings },
 ]
 
-export default function Sidebar({ user, onLogout }) {
+export default function Sidebar({ user, onLogout, isAdmin }) {
+  const visibleNavItems = isAdmin
+    ? [...navItems, { label: 'User activity', path: '/admin/activity', icon: Shield }]
+    : navItems
+
   return (
     <aside className="sidebar">
       <div className="brand-box">
@@ -23,7 +28,7 @@ export default function Sidebar({ user, onLogout }) {
       </div>
 
       <nav className="sidebar-nav" aria-label="Main navigation">
-        {navItems.map(({ label, path, icon: Icon }) => (
+        {visibleNavItems.map(({ label, path, icon: Icon }) => (
           <NavLink key={path} to={path} className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
             <Icon size={18} />
             <span>{label}</span>

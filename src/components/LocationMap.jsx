@@ -36,6 +36,7 @@ export default function LocationMap({ telemetry = [], showHistory = false, title
 
   const path = validTelemetry
     .slice(0, 50)
+    // Points are sorted newest-first for the marker; reverse this slice to draw travel chronologically.
     .reverse()
     .map((record) => [record.location.latitude, record.location.longitude])
 
@@ -61,7 +62,7 @@ export default function LocationMap({ telemetry = [], showHistory = false, title
                 <p>Last Update: {formatDate(latest.timestamp)}</p>
                 <p>Latitude: {latest.location.latitude.toFixed(4)}</p>
                 <p>Longitude: {latest.location.longitude.toFixed(4)}</p>
-                <p>Accuracy: {latest.location.accuracy ? `${latest.location.accuracy.toFixed(1)} m` : 'N/A'}</p>
+                <p>Accuracy: {Number.isFinite(latest.location.accuracy) ? `${latest.location.accuracy.toFixed(1)} m` : 'N/A'}</p>
                 <p>Battery: {latest.batteryLevel ?? 0}%</p>
               </div>
             </Popup>

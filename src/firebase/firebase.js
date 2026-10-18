@@ -13,6 +13,7 @@ const firebaseConfig = {
 
 export const isFirebaseConfigured = Object.values(firebaseConfig).every(Boolean)
 
+// Reuse the existing app instance during hot reloads to prevent duplicate initialization.
 export const app = isFirebaseConfigured
   ? getApps().length > 0
     ? getApp()

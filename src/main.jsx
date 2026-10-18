@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import './index.css'
 
+// Route components rely on BrowserRouter context throughout the application.
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>

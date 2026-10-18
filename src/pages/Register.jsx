@@ -19,6 +19,7 @@ export default function Register() {
     event.preventDefault()
     setError('')
 
+    // Validate both password fields before sending a create-user request to Firebase.
     if (form.password !== form.confirmPassword) {
       setError('Passwords do not match.')
       return
